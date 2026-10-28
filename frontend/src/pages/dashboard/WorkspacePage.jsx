@@ -4,22 +4,41 @@ import { SellerSidebar } from '../../components/seller/SellerSidebar'
 import { fetchAdminUsers, fetchCurrentUser } from '../../services/api/authApi'
 import {
   connectSellerMarketplace,
-  createSellerProduct,
-  deleteSellerProduct,
-  deleteSellerTeamMember,
   disconnectSellerMarketplace,
-  fetchSellerOverview,
-  inviteSellerTeamMember,
   simulateSellerMarketplaceWebhook,
-  syncAllSellerProducts,
   syncSingleSellerMarketplace,
   triggerMarketplaceAction,
   updateSellerMarketplaceSettings,
+} from '../../services/api/marketplace'
+import {
+  bulkSellerOrderAction,
+  createSellerOrder,
+  deleteSellerOrder,
   updateSellerOrderShipping,
+} from '../../services/api/orders'
+import {
+  bulkSellerProductAction,
+  createSellerProduct,
+  deleteSellerProduct,
+  duplicateSellerProduct,
+  syncAllSellerProducts,
+  updateSellerProduct,
   updateSellerProductStock,
+} from '../../services/api/products'
+import {
+  fetchSellerOverview,
+  rotateSellerStoreKeys,
+  testSellerStoreWebhook,
   updateSellerStoreSettings,
+} from '../../services/api/stores'
+import { checkoutSellerSubscription } from '../../services/api/subscription'
+import {
+  deleteSellerTeamMember,
+  executeSellerTeamSessionAction,
+  inviteSellerTeamMember,
+  transferSellerStoreOwnership,
   updateSellerTeamPermissions,
-} from '../../services/api/sellerApi'
+} from '../../services/api/team'
 import { SellerDashboardPage } from '../seller/Dashboard'
 import { SellerMarketplacePage } from '../seller/Marketplace'
 import { SellerOrdersPage } from '../seller/Orders'
@@ -130,7 +149,28 @@ export function WorkspacePage({
     const created = await createSellerProduct(productInput)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast(`Produk ${created.sku} berhasil disimpan ke PostgreSQL & disinkronkan ke 3 toko.`)
+    showToast(`Produk ${created.sku} berhasil disimpan & disinkronkan ke 3 toko.`)
+  }
+
+  async function handleUpdateProduct(productId, updateInput) {
+    const updated = await updateSellerProduct(productId, updateInput)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Produk ${updated.sku} berhasil diperbarui & stok disinkronkan.`)
+  }
+
+  async function handleDuplicateProduct(productId) {
+    const cloned = await duplicateSellerProduct(productId)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Produk berhasil diduplikasi sebagai ${cloned.sku}.`)
+  }
+
+  async function handleBulkProductAction(bulkInput) {
+    await bulkSellerProductAction(bulkInput)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Aksi massal pada ${bulkInput.product_ids.length} produk berhasil dijalankan.`)
   }
 
   async function handleDeleteProduct(productId) {
@@ -140,11 +180,32 @@ export function WorkspacePage({
     showToast('Produk dihapus dari katalog.')
   }
 
-  async function handleShipOrder(orderId, payload) {
-    await updateSellerOrderShipping(orderId, payload)
+  async function handleCreateOrder(orderInput) {
+    const created = await createSellerOrder(orderInput)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast('Nomor resi dan status pengiriman berhasil disimpan ke PostgreSQL.')
+    showToast(`Pesanan ${created.order_number} berhasil dibuat & stok dipotong otomatis.`)
+  }
+
+  async function handleShipOrder(orderId, payload) {
+    const updated = await updateSellerOrderShipping(orderId, payload)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Pesanan ${updated.order_number} diperbarui (${updated.status}).`)
+  }
+
+  async function handleBulkOrderAction(bulkInput) {
+    await bulkSellerOrderAction(bulkInput)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Aksi massal pada ${bulkInput.order_ids.length} pesanan berhasil dijalankan.`)
+  }
+
+  async function handleDeleteOrder(orderId) {
+    await deleteSellerOrder(orderId)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast('Pesanan dihapus dari daftar.')
   }
 
   async function handleMarketplaceAction(mpId, action) {
@@ -200,11 +261,25 @@ export function WorkspacePage({
     showToast(`Staf ${memberInput.full_name} berhasil ditambahkan ke tim.`)
   }
 
-  async function handleUpdatePermissions(memberId, permissions, role) {
-    await updateSellerTeamPermissions(memberId, permissions, role)
+  async function handleUpdatePermissions(memberId, permissionsOrPayload, role) {
+    await updateSellerTeamPermissions(memberId, permissionsOrPayload, role)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast('Hak akses RBAC berhasil diperbarui.')
+    showToast('Hak akses RBAC & profil staf berhasil diperbarui di PostgreSQL.')
+  }
+
+  async function handleTeamSessionAction(memberId, action) {
+    const updated = await executeSellerTeamSessionAction(memberId, action)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Status keamanan sesi ${updated.full_name} diperbarui (${updated.last_active}).`)
+  }
+
+  async function handleTransferOwnership(targetMemberId) {
+    const promoted = await transferSellerStoreOwnership(targetMemberId)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Kepemilikan toko berhasil ditransfer kepada ${promoted.full_name}.`)
   }
 
   async function handleDeleteMember(memberId) {
@@ -218,7 +293,36 @@ export function WorkspacePage({
     await updateSellerStoreSettings(settingsInput)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast('Pengaturan toko & paket langganan disimpan ke PostgreSQL.')
+    if (settingsInput?.owner_full_name && onUserUpdated) {
+      const updatedUser = await fetchCurrentUser().catch(() => null)
+      if (updatedUser) onUserUpdated(updatedUser)
+    }
+    showToast('Pengaturan operasional toko berhasil disimpan.')
+  }
+
+  async function handleRotateStoreKeys(target = 'both') {
+    await rotateSellerStoreKeys(target)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast('Kunci keamanan Open API & Webhook berhasil dirotasi.')
+  }
+
+  async function handleTestStoreWebhook() {
+    const res = await testSellerStoreWebhook()
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(`Ping Webhook berhasil (${res?.status || 'HTTP 200 OK'} • ${res?.latency_ms || 42}ms).`)
+    return res
+  }
+
+  async function handleCheckoutSubscription(checkoutInput) {
+    const result = await checkoutSellerSubscription(checkoutInput)
+    const fresh = await fetchSellerOverview()
+    setOverview(fresh)
+    showToast(
+      `Faktur ${result?.invoice?.invoice_number || ''} berhasil diterbitkan & paket ${checkoutInput.plan.toUpperCase()} aktif.`
+    )
+    return result
   }
 
   if (!currentUser) {
@@ -447,7 +551,11 @@ export function WorkspacePage({
               {activeTab === 'products' && (
                 <SellerProductsPage
                   products={overview?.products || []}
+                  marketplaces={overview?.marketplaces || []}
                   onCreateProduct={handleCreateProduct}
+                  onUpdateProduct={handleUpdateProduct}
+                  onDuplicateProduct={handleDuplicateProduct}
+                  onBulkProductAction={handleBulkProductAction}
                   onAdjustStock={handleAdjustStock}
                   onSyncAll={handleSyncAllChannels}
                   onDeleteProduct={handleDeleteProduct}
@@ -457,29 +565,50 @@ export function WorkspacePage({
               {activeTab === 'orders' && (
                 <SellerOrdersPage
                   orders={overview?.orders || []}
+                  products={overview?.products || []}
+                  store={store}
+                  onCreateOrder={handleCreateOrder}
                   onShipOrder={handleShipOrder}
+                  onBulkOrderAction={handleBulkOrderAction}
+                  onDeleteOrder={handleDeleteOrder}
                 />
               )}
-              {activeTab === 'reports' && <SellerReportsPage overview={overview} />}
+              {activeTab === 'reports' && (
+                <SellerReportsPage
+                  overview={overview}
+                  onUpdateSettings={handleUpdateStoreSettings}
+                  onSelectTab={onSelectSubRoute}
+                />
+              )}
               {activeTab === 'team' && (
                 <SellerTeamPage
                   team={overview?.team || []}
+                  syncLogs={overview?.sync_logs || []}
+                  store={store}
                   onInviteMember={handleInviteMember}
                   onUpdatePermissions={handleUpdatePermissions}
+                  onTeamSessionAction={handleTeamSessionAction}
+                  onTransferOwnership={handleTransferOwnership}
                   onDeleteMember={handleDeleteMember}
                 />
               )}
               {activeTab === 'subscription' && (
                 <SellerSubscriptionPage
+                  overview={overview}
                   store={store}
                   onUpdateSettings={handleUpdateStoreSettings}
+                  onCheckoutSubscription={handleCheckoutSubscription}
                 />
               )}
               {activeTab === 'settings' && (
                 <SellerSettingsPage
+                  key={`${store?.id || 'store'}-${store?.updated_at || ''}`}
                   store={store}
                   currentUser={currentUser}
+                  syncLogs={overview?.sync_logs || []}
                   onUpdateSettings={handleUpdateStoreSettings}
+                  onRotateStoreKeys={handleRotateStoreKeys}
+                  onTestStoreWebhook={handleTestStoreWebhook}
                 />
               )}
             </>

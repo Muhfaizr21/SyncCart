@@ -23,6 +23,7 @@ func MigrateAndSeed(db *gorm.DB) error {
 		&models.MarketplaceConnection{},
 		&models.TeamMember{},
 		&models.SyncLog{},
+		&models.SubscriptionInvoice{},
 	); err != nil {
 		return err
 	}
@@ -71,16 +72,29 @@ func MigrateAndSeed(db *gorm.DB) error {
 	err = db.Where("owner_id = ?", seller.ID).First(&defaultStore).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		defaultStore = models.Store{
-			OwnerID:           seller.ID,
-			StoreName:         "Toko Nusantara Official",
-			Plan:              "business",
-			ConnectedChannels: "Shopee,Tokopedia,TikTok Shop",
-			Status:            "active",
+			OwnerID:                 seller.ID,
+			StoreName:               "Toko Nusantara Official",
+			Plan:                    "business",
+			ConnectedChannels:       "Shopee,Tokopedia,TikTok Shop",
+			PlatformFeePercent:      6.5,
+			OperationalCogsPercent:  42.0,
+			TaxPercent:              0.5,
+			ReportScheduleEmail:     "seller@synccart.id",
+			ReportScheduleFrequency: "weekly",
+			Status:                  "active",
 		}
 		if err := db.Create(&defaultStore).Error; err != nil {
 			return err
 		}
 		log.Println("Seeded default Store: Toko Nusantara Official")
+	} else if defaultStore.PlatformFeePercent == 0 && defaultStore.OperationalCogsPercent == 0 {
+		db.Model(&defaultStore).Updates(map[string]interface{}{
+			"platform_fee_percent":      6.5,
+			"operational_cogs_percent":  42.0,
+			"tax_percent":               0.5,
+			"report_schedule_email":     "seller@synccart.id",
+			"report_schedule_frequency": "weekly",
+		})
 	}
 
 	now := time.Now()
@@ -282,6 +296,15 @@ func MigrateAndSeed(db *gorm.DB) error {
 			return err
 		}
 		log.Println("Seeded 5 multi-channel orders into PostgreSQL")
+	} else {
+		var existingOrders []models.Order
+		db.Where("store_id = ?", defaultStore.ID).Order("id ASC").Find(&existingOrders)
+		methods := []string{"QRIS", "Virtual Account BCA", "COD (Bayar di Tempat)", "ShopeePay / GoPay", "Kartu Kredit / PayLater"}
+		for idx, ord := range existingOrders {
+			if ord.PaymentMethod == "" || (ord.PaymentMethod == "QRIS" && idx > 0) {
+				db.Model(&ord).Update("payment_method", methods[idx%len(methods)])
+			}
+		}
 	}
 
 	// 5. Seed or Backfill Marketplace Connections
@@ -416,46 +439,174 @@ func MigrateAndSeed(db *gorm.DB) error {
 	if teamCount == 0 {
 		seedMembers := []models.TeamMember{
 			{
-				StoreID:     defaultStore.ID,
-				FullName:    "Budi Pratama",
-				Email:       "seller@synccart.id",
-				Role:        "Owner Toko",
-				Permissions: "lihat_produk,edit_produk,lihat_order,proses_order,lihat_laporan,kelola_marketplace,kelola_tim,manage_settings",
-				Status:      "active",
-				LastActive:  "Sedang online",
+				StoreID:          defaultStore.ID,
+				FullName:         "Budi Pratama",
+				Email:            "seller@synccart.id",
+				Phone:            "0811-9988-7701",
+				Department:       "Manajemen & Integrasi",
+				Role:             "Owner Toko",
+				Permissions:      "lihat_produk,edit_produk,lihat_order,proses_order,lihat_laporan,kelola_marketplace,kelola_tim,manage_settings",
+				AssignedChannels: "Shopee,Tokopedia,TikTok Shop",
+				TwoFactorEnabled: true,
+				SessionDevice:    "MacBook Pro M3 • Safari 18 (Jakarta)",
+				SessionIP:        "103.144.22.10",
+				InviteExpiresAt:  "Akun Utama Owner",
+				ActionsCount:     142,
+				Status:           "active",
+				LastActive:       "Sedang online",
 			},
 			{
-				StoreID:     defaultStore.ID,
-				FullName:    "Siti Aminah",
-				Email:       "siti.admin@nusantara.id",
-				Role:        "Staff Admin Order",
-				Permissions: "lihat_produk,lihat_order,proses_order",
-				Status:      "active",
-				LastActive:  "12 menit lalu",
+				StoreID:          defaultStore.ID,
+				FullName:         "Siti Aminah",
+				Email:            "siti.admin@nusantara.id",
+				Phone:            "0812-8421-9012",
+				Department:       "Operasional & Order",
+				Role:             "Staff Admin Order",
+				Permissions:      "lihat_produk,lihat_order,proses_order",
+				AssignedChannels: "Shopee,Tokopedia,TikTok Shop",
+				TwoFactorEnabled: true,
+				SessionDevice:    "Windows 11 • Chrome 130 (Jakarta)",
+				SessionIP:        "114.122.89.41",
+				InviteExpiresAt:  "Terverifikasi",
+				ActionsCount:     89,
+				Status:           "active",
+				LastActive:       "12 menit lalu",
 			},
 			{
-				StoreID:     defaultStore.ID,
-				FullName:    "Rangga Saputra",
-				Email:       "rangga.gudang@nusantara.id",
-				Role:        "Staff Gudang & Stok",
-				Permissions: "lihat_produk,edit_produk,lihat_order",
-				Status:      "active",
-				LastActive:  "34 menit lalu",
+				StoreID:          defaultStore.ID,
+				FullName:         "Rangga Saputra",
+				Email:            "rangga.gudang@nusantara.id",
+				Phone:            "0813-7712-4490",
+				Department:       "Gudang & Logistik",
+				Role:             "Staff Gudang & Stok",
+				Permissions:      "lihat_produk,edit_produk,lihat_order",
+				AssignedChannels: "Shopee,Tokopedia",
+				TwoFactorEnabled: true,
+				SessionDevice:    "Android Scanner • Chrome Mobile (Sunter)",
+				SessionIP:        "182.253.44.19",
+				InviteExpiresAt:  "Terverifikasi",
+				ActionsCount:     64,
+				Status:           "active",
+				LastActive:       "34 menit lalu",
 			},
 			{
-				StoreID:     defaultStore.ID,
-				FullName:    "Maya Lestari",
-				Email:       "maya.finance@nusantara.id",
-				Role:        "Staff Finance & Laporan",
-				Permissions: "lihat_order,lihat_laporan",
-				Status:      "active",
-				LastActive:  "1 jam lalu",
+				StoreID:          defaultStore.ID,
+				FullName:         "Maya Lestari",
+				Email:            "maya.finance@nusantara.id",
+				Phone:            "0815-6601-2381",
+				Department:       "Keuangan & Akuntansi",
+				Role:             "Staff Finance & Laporan",
+				Permissions:      "lihat_order,lihat_laporan",
+				AssignedChannels: "Shopee,Tokopedia,TikTok Shop",
+				TwoFactorEnabled: false,
+				SessionDevice:    "MacBook Air M2 • Edge 129 (Bandung)",
+				SessionIP:        "36.72.118.90",
+				InviteExpiresAt:  "Terverifikasi",
+				ActionsCount:     37,
+				Status:           "active",
+				LastActive:       "1 jam lalu",
 			},
 		}
 		if err := db.Create(&seedMembers).Error; err != nil {
 			return err
 		}
 		log.Println("Seeded 4 RBAC team members into PostgreSQL")
+	} else {
+		var existingMembers []models.TeamMember
+		db.Where("store_id = ?", defaultStore.ID).Order("id ASC").Find(&existingMembers)
+		depts := []string{"Manajemen & Integrasi", "Operasional & Order", "Gudang & Logistik", "Keuangan & Akuntansi"}
+		phones := []string{"0811-9988-7701", "0812-8421-9012", "0813-7712-4490", "0815-6601-2381"}
+		devices := []string{
+			"MacBook Pro M3 • Safari 18 (Jakarta)",
+			"Windows 11 • Chrome 130 (Jakarta)",
+			"Android Scanner • Chrome Mobile (Sunter)",
+			"MacBook Air M2 • Edge 129 (Bandung)",
+		}
+		ips := []string{"103.144.22.10", "114.122.89.41", "182.253.44.19", "36.72.118.90"}
+		actions := []int{142, 89, 64, 37}
+		for idx, m := range existingMembers {
+			if m.Phone == "" || m.Phone == "-" {
+				db.Model(&m).Updates(map[string]interface{}{
+					"phone":          phones[idx%len(phones)],
+					"department":     depts[idx%len(depts)],
+					"session_device": devices[idx%len(devices)],
+					"session_ip":     ips[idx%len(ips)],
+					"actions_count":  actions[idx%len(actions)],
+				})
+			}
+			if m.Role == "Owner Toko" && !strings.Contains(m.Permissions, "kelola_stok") {
+				db.Model(&m).Update("permissions", "lihat_produk,edit_produk,hapus_produk,kelola_stok,lihat_order,proses_order,buat_order_manual,batal_refund_order,kelola_marketplace,konfigurasi_markup_sync,simulasi_audit_webhook,lihat_laporan,atur_parameter_laba,ekspor_jadwal_laporan,kelola_tim,kontrol_sesi_2fa,transfer_kepemilikan,manage_settings,kelola_langganan,unduh_invoice_billing")
+			} else if m.Role == "Staff Admin Order" && !strings.Contains(m.Permissions, "buat_order_manual") {
+				db.Model(&m).Update("permissions", "lihat_produk,lihat_order,proses_order,buat_order_manual,batal_refund_order")
+			} else if m.Role == "Staff Gudang & Stok" && !strings.Contains(m.Permissions, "kelola_stok") {
+				db.Model(&m).Update("permissions", "lihat_produk,edit_produk,kelola_stok,lihat_order,proses_order")
+			} else if m.Role == "Staff Finance & Laporan" && !strings.Contains(m.Permissions, "ekspor_jadwal_laporan") {
+				db.Model(&m).Update("permissions", "lihat_order,lihat_laporan,atur_parameter_laba,ekspor_jadwal_laporan,unduh_invoice_billing")
+			}
+		}
+	}
+
+	// 8. Seed Subscription Invoices if empty
+	var invoiceCount int64
+	db.Model(&models.SubscriptionInvoice{}).Where("store_id = ?", defaultStore.ID).Count(&invoiceCount)
+	if invoiceCount == 0 {
+		seedInvoices := []models.SubscriptionInvoice{
+			{
+				StoreID:        defaultStore.ID,
+				InvoiceNumber:  "INV-SUB-202610-003",
+				PlanName:       "Business",
+				BillingCycle:   "monthly",
+				BaseAmount:     299000,
+				AddonsAmount:   0,
+				DiscountAmount: 0,
+				TaxAmount:      32890,
+				TotalAmount:    331890,
+				PaymentGateway: "Midtrans • BCA Virtual Account",
+				AddonsSummary:  "Tanpa Add-on Ekstra",
+				PeriodStart:    "28 Okt 2026",
+				PeriodEnd:      "28 Nov 2026",
+				Status:         "Paid",
+				CreatedAt:      now.Add(-2 * time.Hour),
+			},
+			{
+				StoreID:        defaultStore.ID,
+				InvoiceNumber:  "INV-SUB-202609-002",
+				PlanName:       "Business",
+				BillingCycle:   "monthly",
+				BaseAmount:     299000,
+				AddonsAmount:   25000,
+				DiscountAmount: 0,
+				TaxAmount:      35640,
+				TotalAmount:    359640,
+				PaymentGateway: "Midtrans • BCA Virtual Account",
+				AddonsSummary:  "+1.000 Kuota SKU & Cloud WebP Storage",
+				PeriodStart:    "28 Sep 2026",
+				PeriodEnd:      "28 Okt 2026",
+				Status:         "Paid",
+				CreatedAt:      now.Add(-30 * 24 * time.Hour),
+			},
+			{
+				StoreID:        defaultStore.ID,
+				InvoiceNumber:  "INV-SUB-202608-001",
+				PlanName:       "Starter",
+				BillingCycle:   "monthly",
+				BaseAmount:     99000,
+				AddonsAmount:   0,
+				DiscountAmount: 0,
+				TaxAmount:      10890,
+				TotalAmount:    109890,
+				PaymentGateway: "Xendit • QRIS Korporat",
+				AddonsSummary:  "Tanpa Add-on Ekstra",
+				PeriodStart:    "28 Agu 2026",
+				PeriodEnd:      "28 Sep 2026",
+				Status:         "Paid",
+				CreatedAt:      now.Add(-60 * 24 * time.Hour),
+			},
+		}
+		if err := db.Create(&seedInvoices).Error; err != nil {
+			return err
+		}
+		log.Println("Seeded 3 subscription invoices into PostgreSQL")
 	}
 
 	return nil
