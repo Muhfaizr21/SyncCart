@@ -24,6 +24,8 @@ func MigrateAndSeed(db *gorm.DB) error {
 		&models.TeamMember{},
 		&models.SyncLog{},
 		&models.SubscriptionInvoice{},
+		&models.PlatformCoupon{},
+		&models.PlatformSetting{},
 	); err != nil {
 		return err
 	}
@@ -607,6 +609,264 @@ func MigrateAndSeed(db *gorm.DB) error {
 			return err
 		}
 		log.Println("Seeded 3 subscription invoices into PostgreSQL")
+	}
+
+	// 9. Seed Additional Multi-Tenant Sellers & Stores for SuperAdmin Ecosystem
+	var totalStoresCount int64
+	db.Model(&models.Store{}).Count(&totalStoresCount)
+	if totalStoresCount < 4 {
+		extraSellers := []struct {
+			FullName  string
+			Email     string
+			StoreName string
+			StoreSlug string
+			Category  string
+			City      string
+			Plan      string
+			Cycle     string
+			Status    string
+			SKU       string
+			ProdName  string
+			Price     int64
+			Stock     int
+			Sold      int
+			OrderNo   string
+			Buyer     string
+			Initials  string
+			Channel   string
+			Amount    int64
+			OrdStatus string
+		}{
+			{
+				FullName:  "Muhammad Sadad",
+				Email:     "sadad@erigo.id",
+				StoreName: "Erigo Apparel Flagship",
+				StoreSlug: "erigo-apparel-flagship",
+				Category:  "Fashion & Apparel Omnichannel",
+				City:      "Tangerang Selatan, Banten",
+				Plan:      "enterprise",
+				Cycle:     "annual",
+				Status:    "active",
+				SKU:       "ERG-HD-BLK-01",
+				ProdName:  "Erigo Hoodie Fleece Oversize Black",
+				Price:     249000,
+				Stock:     85,
+				Sold:      1240,
+				OrderNo:   "INV-SHP-88412",
+				Buyer:     "Esther Howard",
+				Initials:  "EH",
+				Channel:   "Shopee",
+				Amount:    747000,
+				OrdStatus: "Completed",
+			},
+			{
+				FullName:  "Salman Subakat",
+				Email:     "ops@kahfgrooming.id",
+				StoreName: "Kahf Grooming Official",
+				StoreSlug: "kahf-grooming-official",
+				Category:  "Beauty, Skincare & Personal Care",
+				City:      "Jakarta Selatan, DKI Jakarta",
+				Plan:      "business",
+				Cycle:     "monthly",
+				Status:    "active",
+				SKU:       "KHF-FW-100ML",
+				ProdName:  "Kahf Oil & Acne Care Face Wash Triple Pack",
+				Price:     115000,
+				Stock:     64,
+				Sold:      890,
+				OrderNo:   "INV-TTS-66310",
+				Buyer:     "James Moore",
+				Initials:  "JM",
+				Channel:   "TikTok Shop",
+				Amount:    345000,
+				OrdStatus: "Shipped",
+			},
+			{
+				FullName:  "Adhitya Caesarico",
+				Email:     "founder@aerostreet.id",
+				StoreName: "AeroStreet Footwear ID",
+				StoreSlug: "aerostreet-footwear-id",
+				Category:  "Olahraga, Hobi & Gaya Hidup",
+				City:      "Klaten, Jawa Tengah",
+				Plan:      "starter",
+				Cycle:     "monthly",
+				Status:    "active",
+				SKU:       "AERO-SNK-42",
+				ProdName:  "AeroStreet Hoops Low Classic White Green",
+				Price:     169000,
+				Stock:     18,
+				Sold:      520,
+				OrderNo:   "INV-TKP-91204",
+				Buyer:     "Christopher Harris",
+				Initials:  "CH",
+				Channel:   "Tokopedia",
+				Amount:    507000,
+				OrdStatus: "Perlu Resi",
+			},
+		}
+
+		for idx, item := range extraSellers {
+			var u models.User
+			if err := db.Where("email = ?", item.Email).First(&u).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				u = models.User{
+					FullName:     item.FullName,
+					Email:        item.Email,
+					PasswordHash: passwordHash,
+					Role:         config.RoleSeller,
+					Status:       "active",
+				}
+				db.Create(&u)
+			}
+
+			var st models.Store
+			if err := db.Where("owner_id = ?", u.ID).First(&st).Error; errors.Is(err, gorm.ErrRecordNotFound) {
+				st = models.Store{
+					OwnerID:           u.ID,
+					StoreName:         item.StoreName,
+					StoreSlug:         item.StoreSlug,
+					BusinessCategory:  item.Category,
+					WarehouseCity:     item.City,
+					Plan:              item.Plan,
+					BillingCycle:      item.Cycle,
+					ConnectedChannels: "Shopee,Tokopedia,TikTok Shop",
+					Status:            item.Status,
+				}
+				db.Create(&st)
+
+				prod := models.Product{
+					StoreID:        st.ID,
+					SKU:            item.SKU,
+					Name:           item.ProdName,
+					Category:       item.Category,
+					Warehouse:      item.City,
+					Price:          item.Price,
+					Stock:          item.Stock,
+					SoldCount:      item.Sold,
+					ShopeeStock:    item.Stock,
+					TokopediaStock: item.Stock,
+					TikTokStock:    item.Stock,
+					SyncStatus:     "synced",
+					Status:         "active",
+					LastSyncAt:     now.Add(-time.Duration(idx+3) * time.Minute),
+				}
+				db.Create(&prod)
+
+				ord := models.Order{
+					StoreID:       st.ID,
+					OrderNumber:   item.OrderNo,
+					PaymentCode:   "ID: " + item.OrderNo[len(item.OrderNo)-5:],
+					Marketplace:   item.Channel,
+					BuyerName:     item.Buyer,
+					BuyerInitials:   item.Initials,
+					BuyerPhone:      "0812-8800-441" + string(rune('1'+idx)),
+					ShippingAddress: "Jl. Sudirman Kav. 21, " + item.City,
+					ProductName:     item.ProdName,
+					ProductSKU:    item.SKU,
+					PropertySub:   item.Channel + " Official • 3 pcs • J&T Express",
+					Quantity:      3,
+					Amount:        item.Amount,
+					Courier:       "J&T Express",
+					PaymentMethod: "QRIS",
+					TrackingResi:  "JP9920182" + string(rune('1'+idx)),
+					Status:        item.OrdStatus,
+					SLADeadline:   "Tepat Waktu",
+					CreatedAt:     now.Add(-time.Duration(idx+1) * time.Hour),
+				}
+				db.Create(&ord)
+
+				baseAmt := int64(299000)
+				planLabel := "Business"
+				if item.Plan == "enterprise" {
+					baseAmt = 799000
+					planLabel = "Enterprise"
+				} else if item.Plan == "starter" {
+					baseAmt = 99000
+					planLabel = "Starter"
+				}
+				taxAmt := (baseAmt * 11) / 100
+				inv := models.SubscriptionInvoice{
+					StoreID:        st.ID,
+					InvoiceNumber:  "INV-ADM-202610-10" + string(rune('1'+idx)),
+					PlanName:       planLabel,
+					BillingCycle:   item.Cycle,
+					BaseAmount:     baseAmt,
+					TaxAmount:      taxAmt,
+					TotalAmount:    baseAmt + taxAmt,
+					PaymentGateway: "Midtrans • BCA Virtual Account",
+					AddonsSummary:  "Paket Multi-Toko Aktif",
+					PeriodStart:    "01 Okt 2026",
+					PeriodEnd:      "01 Nov 2026",
+					Status:         "Paid",
+					CreatedAt:      now.Add(-time.Duration(idx+2) * 24 * time.Hour),
+				}
+				db.Create(&inv)
+			}
+		}
+	}
+
+	// 10. Seed Platform Coupons if empty
+	var couponCount int64
+	db.Model(&models.PlatformCoupon{}).Count(&couponCount)
+	if couponCount == 0 {
+		seedCoupons := []models.PlatformCoupon{
+			{
+				Code:            "SYNCCART10",
+				Description:     "Potongan 10% langganan bulanan & tahunan untuk semua seller",
+				DiscountPercent: 10,
+				MaxUses:         500,
+				UsedCount:       42,
+				ApplicablePlans: "starter,business,enterprise",
+				ExpiresAt:       "31 Des 2026",
+				Status:          "active",
+			},
+			{
+				Code:            "STARTUP20",
+				Description:     "Diskon 20% akselerasi brand lokal omnichannel",
+				DiscountPercent: 20,
+				MaxUses:         200,
+				UsedCount:       19,
+				ApplicablePlans: "business,enterprise",
+				ExpiresAt:       "31 Des 2026",
+				Status:          "active",
+			},
+			{
+				Code:            "UMKMJAYA",
+				Description:     "Diskon 10% khusus migrasi seller Starter",
+				DiscountPercent: 10,
+				MaxUses:         1000,
+				UsedCount:       128,
+				ApplicablePlans: "starter",
+				ExpiresAt:       "30 Nov 2026",
+				Status:          "active",
+			},
+		}
+		db.Create(&seedCoupons)
+	}
+
+	// 11. Seed Singleton Platform Setting if empty
+	var settingCount int64
+	db.Model(&models.PlatformSetting{}).Count(&settingCount)
+	if settingCount == 0 {
+		db.Create(&models.PlatformSetting{
+			PlatformName:             "SyncCart Enterprise Cloud",
+			SupportEmail:             "ops@synccart.id",
+			SupportPhone:             "+62 21 5088 9900",
+			OfficeAddress:            "Menara Sudirman Lt. 18, SCBD Jakarta Selatan",
+			ShopeePartnerID:          "SHP-PARTNER-2009841",
+			ShopeePartnerKeyMasked:   "shp_partner_live_••••_9921",
+			ShopeeRateLimitPerMin:    1200,
+			TokopediaAppID:           "TKP-FS-884120",
+			TokopediaSecretMasked:    "tkp_fs_secret_••••_4410",
+			TokopediaRateLimitPerMin: 1000,
+			TikTokAppKey:             "TTS-OPEN-661920",
+			TikTokSecretMasked:       "tts_open_live_••••_7732",
+			TikTokRateLimitPerMin:    900,
+			CommissionStarterPct:     1.5,
+			CommissionBusinessPct:    1.0,
+			CommissionEnterprisePct:  0.5,
+			MaintenanceMode:          false,
+			AutoSuspendUnpaidDays:    3,
+		})
 	}
 
 	return nil

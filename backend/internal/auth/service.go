@@ -164,7 +164,7 @@ func (s *Service) generateJWT(user *models.User) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   user.Email,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(now.Add(30 * 24 * time.Hour)),
 		},
 	}
 

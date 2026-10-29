@@ -17,7 +17,13 @@ export async function authFetch(path, options = {}) {
 
   const payload = await res.json().catch(() => null)
   if (!res.ok || !payload?.success) {
-    throw new Error(payload?.error || payload?.message || 'Gagal berkomunikasi dengan server Go')
+    const errorMsg = payload?.error || payload?.message || 'Gagal berkomunikasi dengan server'
+    const err = new Error(errorMsg)
+    if (res.status === 401 || errorMsg.toLowerCase().includes('kedaluwarsa') || errorMsg.toLowerCase().includes('tidak valid')) {
+      err.isAuthError = true
+      err.status = 401
+    }
+    throw err
   }
   return payload
 }

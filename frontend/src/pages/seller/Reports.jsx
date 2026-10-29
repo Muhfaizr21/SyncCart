@@ -544,7 +544,7 @@ export function SellerReportsPage({ overview, onUpdateSettings, onSelectTab }) {
       })
       setIsFinanceModalOpen(false)
       setFeedbackBanner(
-        'Parameter komisi marketplace, HPP, dan pajak berhasil disimpan ke PostgreSQL.'
+        'Parameter komisi marketplace, HPP, dan pajak berhasil disimpan.'
       )
     } finally {
       setIsSubmitting(false)
@@ -1706,7 +1706,7 @@ export function SellerReportsPage({ overview, onUpdateSettings, onSelectTab }) {
             <div className="p-5 sm:p-6 bg-[#FAF9F6] border-b border-[#ECEAE4] flex items-center justify-between">
               <div>
                 <span className="px-2.5 py-0.5 rounded-full bg-[#FFDECE] text-[#9A3408] text-[10px] font-extrabold uppercase">
-                  Parameter Kalkulasi PostgreSQL
+                  Parameter Kalkulasi Finansial
                 </span>
                 <h2
                   id="finance-config-modal-title"

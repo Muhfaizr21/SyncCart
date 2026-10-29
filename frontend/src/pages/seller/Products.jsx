@@ -1549,7 +1549,7 @@ export function SellerProductsPage({
               <div className="flex items-center justify-between gap-3 pt-2 border-t border-[#ECEAE4]">
                 <span className="text-[11px] text-[#52524E]">
                   {imagesList.length >= 1
-                    ? `✓ ${imagesList.length} foto .webp siap disimpan ke PostgreSQL`
+                    ? `✓ ${imagesList.length} foto .webp siap disimpan ke katalog`
                     : 'Unggah 1 foto atau lebih (otomatis dikonversi ke .webp)'}
                 </span>
 

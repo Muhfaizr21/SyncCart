@@ -1211,7 +1211,7 @@ export function SellerTeamPage({
                 ))}
               </div>
               <span className="text-[11px] font-bold text-[#9A3408]">
-                Klik sel matriks untuk mengubah otoritas secara langsung di PostgreSQL
+                Klik sel matriks untuk mengubah otoritas secara langsung di sistem
               </span>
             </div>
 
@@ -1344,10 +1344,10 @@ export function SellerTeamPage({
               </div>
             </div>
 
-            {/* Right 6 Cols: Live PostgreSQL Audit Trail */}
+            {/* Right 6 Cols: Live Audit Trail */}
             <div className="lg:col-span-6 space-y-3">
               <h3 className="text-sm font-extrabold text-[#141413]">
-                Jejak Audit Aktivitas Tim & Sistem (PostgreSQL)
+                Jejak Audit Aktivitas Tim & Sistem
               </h3>
               <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
                 {syncLogs.slice(0, 10).map((log) => (
@@ -1709,7 +1709,7 @@ export function SellerTeamPage({
             <div className="p-5 sm:p-6 bg-[#FAF9F6] border-b border-[#ECEAE4] flex items-center justify-between">
               <div>
                 <span className="px-2.5 py-0.5 rounded-full bg-[#FFDECE] text-[#9A3408] text-[10px] font-extrabold uppercase">
-                  Pembaruan Hak Akses PostgreSQL ({editingMember.parsedPermissions.length} /{' '}
+                  Pembaruan Hak Akses Modul RBAC ({editingMember.parsedPermissions.length} /{' '}
                   {permissionCatalog.length} Modul)
                 </span>
                 <h2

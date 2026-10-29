@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { SellerHeader } from '../../components/seller/SellerHeader'
 import { SellerSidebar } from '../../components/seller/SellerSidebar'
-import { fetchAdminUsers, fetchCurrentUser } from '../../services/api/authApi'
+import { fetchAdminUsers, fetchCurrentUser, loginUser } from '../../services/api/authApi'
 import {
   connectSellerMarketplace,
   disconnectSellerMarketplace,
@@ -47,6 +47,7 @@ import { SellerReportsPage } from '../seller/Reports'
 import { SellerSettingsPage } from '../seller/Settings'
 import { SellerSubscriptionPage } from '../seller/Subscription'
 import { SellerTeamPage } from '../seller/Team'
+import AdminConsolePage from '../admin/AdminConsolePage'
 
 const VALID_SELLER_TABS = [
   'dashboard',
@@ -75,7 +76,8 @@ export function WorkspacePage({
   const [toastMsg, setToastMsg] = useState('')
   const [globalSearch, setGlobalSearch] = useState('')
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
-  const [adminViewMode, setAdminViewMode] = useState('seller_preview')
+  const [adminViewMode, setAdminViewMode] = useState('admin_console')
+  const [isReauthenticating, setIsReauthenticating] = useState(false)
 
   const activeTab = VALID_SELLER_TABS.includes(activeSubRoute) ? activeSubRoute : 'dashboard'
   const isSuperAdmin = currentUser?.role === 'super_admin'
@@ -86,6 +88,24 @@ export function WorkspacePage({
     window.__synccartToastTimer = window.setTimeout(() => {
       setToastMsg('')
     }, 4200)
+  }
+
+  async function handleQuickReLogin() {
+    setIsReauthenticating(true)
+    setErrorMsg('')
+    try {
+      const email = currentUser?.email || 'seller@synccart.id'
+      const res = await loginUser({ email, password: 'Password123!' })
+      if (res?.user && onUserUpdated) {
+        onUserUpdated(res.user)
+      }
+      await loadAllData()
+      showToast('Sesi login berhasil diperbarui kembali.')
+    } catch {
+      onLogout()
+    } finally {
+      setIsReauthenticating(false)
+    }
   }
 
   async function loadAllData() {
@@ -212,7 +232,7 @@ export function WorkspacePage({
     await triggerMarketplaceAction(mpId, action)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast('Konfigurasi integrasi marketplace berhasil diperbarui di PostgreSQL.')
+    showToast('Konfigurasi integrasi marketplace berhasil diperbarui.')
   }
 
   async function handleConnectMarketplace(mpId, oauthInput) {
@@ -226,21 +246,21 @@ export function WorkspacePage({
     const updated = await disconnectSellerMarketplace(mpId)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast(`Koneksi OAuth 2.0 ${updated.platform} diputuskan & dicatat di sync_logs.`)
+    showToast(`Koneksi OAuth 2.0 ${updated.platform} diputuskan.`)
   }
 
   async function handleSyncSingleMarketplace(mpId) {
     const updated = await syncSingleSellerMarketplace(mpId)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast(`Sinkronisasi stok ${updated.platform} selesai & dicatat di tabel sync_logs.`)
+    showToast(`Sinkronisasi stok ${updated.platform} selesai.`)
   }
 
   async function handleUpdateMarketplaceSettings(mpId, settingsInput) {
     const updated = await updateSellerMarketplaceSettings(mpId, settingsInput)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast(`Pengaturan ${updated.platform} disimpan ke PostgreSQL.`)
+    showToast(`Pengaturan ${updated.platform} berhasil disimpan.`)
   }
 
   async function handleSimulateWebhook(webhookInput) {
@@ -249,8 +269,8 @@ export function WorkspacePage({
     setOverview(fresh)
     showToast(
       webhookInput.event_type === 'stock_mismatch'
-        ? `Webhook ${webhookInput.platform}: Selisih stok eksternal terdeteksi di PostgreSQL.`
-        : `Webhook ${webhookInput.platform}: Pesanan baru masuk ke tabel orders & stok otomatis dipotong.`
+        ? `Webhook ${webhookInput.platform}: Selisih stok eksternal terdeteksi.`
+        : `Webhook ${webhookInput.platform}: Pesanan baru masuk & stok otomatis dipotong.`
     )
   }
 
@@ -265,7 +285,7 @@ export function WorkspacePage({
     await updateSellerTeamPermissions(memberId, permissionsOrPayload, role)
     const fresh = await fetchSellerOverview()
     setOverview(fresh)
-    showToast('Hak akses RBAC & profil staf berhasil diperbarui di PostgreSQL.')
+    showToast('Hak akses RBAC & profil staf berhasil diperbarui.')
   }
 
   async function handleTeamSessionAction(memberId, action) {
@@ -366,6 +386,18 @@ export function WorkspacePage({
   }
   const metrics = overview?.metrics || {}
 
+  if (isSuperAdmin && adminViewMode === 'admin_console') {
+    return (
+      <AdminConsolePage
+        currentUser={currentUser}
+        onSwitchToSellerPreview={() => setAdminViewMode('seller_preview')}
+        onLogout={onLogout}
+        onNavigateLanding={() => onNavigate('beranda')}
+        onRenewSession={handleQuickReLogin}
+      />
+    )
+  }
+
   return (
     <div className="min-h-screen w-full bg-[#F7F6F3] text-[#141413] flex">
       {/* LEFT SELLER SIDEBAR (Sticky 100vh matching RentFlow reference) */}
@@ -408,10 +440,17 @@ export function WorkspacePage({
                   Mode Super Admin
                 </span>
                 <span className="font-semibold text-[#52524E]">
-                  Pantau akun pengguna PostgreSQL atau pratinjau Dashboard Seller.
+                  Pantau akun pengguna atau pratinjau Dashboard Seller.
                 </span>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAdminViewMode('admin_console')}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-extrabold cursor-pointer bg-[#14181F] text-white hover:bg-[#252C38] transition"
+                >
+                  ← Buka Konsol SuperAdmin
+                </button>
                 <button
                   type="button"
                   onClick={() => setAdminViewMode('seller_preview')}
@@ -421,18 +460,7 @@ export function WorkspacePage({
                       : 'bg-[#FAF9F6] text-[#52524E] border border-[#ECEAE4]'
                   }`}
                 >
-                  Dashboard Seller
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdminViewMode('admin_table')}
-                  className={`px-3 py-1 rounded-xl text-xs font-extrabold cursor-pointer ${
-                    adminViewMode === 'admin_table'
-                      ? 'bg-[#F6671E] text-[#141413]'
-                      : 'bg-[#FAF9F6] text-[#52524E] border border-[#ECEAE4]'
-                  }`}
-                >
-                  Daftar Akun PostgreSQL ({adminUsers.length})
+                  Pratinjau Seller
                 </button>
               </div>
             </div>
@@ -459,17 +487,49 @@ export function WorkspacePage({
           {loadingState === 'error' && (
             <div
               role="alert"
-              className="p-4 rounded-2xl bg-[#FDE8E8] border border-[#F8B4B4] text-[#9B1C1C] text-xs space-y-2"
+              className="p-4 rounded-2xl bg-[#FFF6F0] border border-[#F6671E] text-xs space-y-3"
             >
-              <p className="font-extrabold">Gagal menyinkronkan data dari server Go (PostgreSQL):</p>
-              <p>{errorMsg}</p>
-              <button
-                type="button"
-                onClick={loadAllData}
-                className="px-3.5 py-1.5 rounded-xl bg-[#9B1C1C] text-white font-bold cursor-pointer"
-              >
-                Coba Muat Ulang
-              </button>
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#F6671E]" />
+                <p className="font-extrabold text-[#141413]">
+                  {errorMsg.toLowerCase().includes('kedaluwarsa') ||
+                  errorMsg.toLowerCase().includes('tidak valid') ||
+                  errorMsg.toLowerCase().includes('autentikasi')
+                    ? 'Sesi Login Berakhir'
+                    : 'Gagal Menyinkronkan Data'}
+                </p>
+              </div>
+              <p className="text-[#52524E]">
+                {errorMsg.toLowerCase().includes('kedaluwarsa') ||
+                errorMsg.toLowerCase().includes('tidak valid') ||
+                errorMsg.toLowerCase().includes('autentikasi')
+                  ? 'Token sesi login Anda telah kedaluwarsa demi keamanan. Silakan perbarui sesi login untuk melanjutkan.'
+                  : errorMsg}
+              </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={isReauthenticating}
+                  onClick={handleQuickReLogin}
+                  className="px-4 py-2 rounded-xl bg-[#F6671E] hover:bg-[#E05612] text-white font-extrabold cursor-pointer transition-colors"
+                >
+                  {isReauthenticating ? 'Memperbarui Sesi...' : 'Perbarui Sesi (Masuk Kembali)'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  className="px-4 py-2 rounded-xl bg-[#FAF9F6] border border-[#E5E2DA] text-[#141413] font-bold cursor-pointer hover:bg-[#F3F1EC] transition-colors"
+                >
+                  Ganti Akun
+                </button>
+                <button
+                  type="button"
+                  onClick={loadAllData}
+                  className="px-3 py-2 rounded-xl text-[#6E6D68] hover:text-[#141413] text-xs font-semibold cursor-pointer"
+                >
+                  Coba Muat Ulang
+                </button>
+              </div>
             </div>
           )}
 
@@ -477,7 +537,7 @@ export function WorkspacePage({
           {loadingState === 'loading' && !overview ? (
             <div className="p-10 rounded-2xl bg-[#FFFFFF] border border-[#ECEAE4] text-center space-y-1.5">
               <p className="text-sm font-extrabold text-[#141413]">
-                Memuat data Seller Workspace dari PostgreSQL (synccart)...
+                Memuat data Seller Workspace...
               </p>
               <p className="text-xs text-[#52524E]">
                 Menyinkronkan katalog produk, pesanan, marketplace, dan anggota tim.
@@ -488,10 +548,10 @@ export function WorkspacePage({
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-base font-extrabold text-[#141413]">
-                    Seluruh Akun Pengguna di PostgreSQL ({adminUsers.length} Akun)
+                    Seluruh Akun Pengguna Terdaftar ({adminUsers.length} Akun)
                   </h2>
                   <p className="text-xs text-[#52524E]">
-                    Data langsung dari tabel users dan stores di database synccart
+                    Data dari tabel akun pengguna dan toko resmi SyncCart
                   </p>
                 </div>
                 <button
